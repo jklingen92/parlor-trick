@@ -35,9 +35,12 @@ class PlayerManager:
     
     def random_order(self) -> list[Player]:
         return random.sample(self._players, len(self._players))
-    
-    def asdict(self) -> list[dict]:
-        return [asdict(player) for player in self._players]
+
+    def get_by_uuid(self, uuid: UUID) -> Player | None:
+        for player in self._players:
+            if player.uuid == uuid:
+                return player
+        return None
 
 
 class Game:
@@ -46,7 +49,7 @@ class Game:
 
     def add_players(self, players: list[Player]) -> None:
         self.players = PlayerManager(
-            [self.player_class(**asdict(player)) for player in players]
+            [self.player_class(player.name, player.heuristic, player.uuid) for player in players]
         )
 
     def setup(self) -> None:

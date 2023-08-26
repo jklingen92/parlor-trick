@@ -1,220 +1,205 @@
-from dataclasses import dataclass
-import random
-import time
+from dataclasses import dataclass, field, asdict
 import os
+import time
 
-from cards import CardList, FrenchSuitedDeck, SmallFrenchSuitedDeck
-from game import GameState, TwoPlayerGame, VariableDeckGameMixin, TargetScoreGameMixin
-from player import HumanPlayer, Player, RandomPlayer
-
-
-
+from parlor_trick.cards import Card, CardList, FrenchSuitedCard, SmallFrenchSuitedDeck, Suit
+from parlor_trick.core import Game, Heuristic, Player
+from parlor_trick.heuristic import ShowHandUserInput, RandomDecision
+from parlor_trick.utils import message
 
 
 
 @dataclass
-class SmallGermanWhistState(GameState):
+class GermanWhistRoundPlayer(Player):
 
-    score: int = 0
-    trump: 
-    
+    score: int = field(init=False, default=0)
+    hand: CardList = field(default_factory=CardList)
+    opposing_hand: CardList = field(default_factory=CardList)
+    leading: bool = False
 
-    
-@dataclass
-class 
+    def lead(self, game: Game) -> Card:
+        self.leading = True
+        return self.hand.pick(self.heuristic.decision(game, self, self.hand.cards))
 
-
-
-class GermanWhist(VariableDeckGameMixin, TargetScoreGameMixin, TwoPlayerGame):
-
-    deck_class = FrenchSuitedDeck
-    
-    def get_target_score(self):
-        return (self.scoring_tricks // 2) * 3
-
-    def setup(self):
-        if self.deck_size % 4 != 0:
-            raise ValueError("Deck must contain multiple of 4 number of cards.")
-        self.scoring_tricks = self.deck_size / 4
-        
-        self.round_count = 0
-        class DynamicRoundClass(GermanWhistRound):
-            deck_class = self.deck_class
-
-        self.round_class = DynamicRoundClass
-
-    def get_header(self):
-         return (
-            f"""
-{self.players[0].name:>20}{self.players[1].name:>20}               
-{self.scores[self.players[0]]:20}{self.scores[self.players[1]]:20}               
-
------------------------------------------------------------
-Round {self.round_count}
-"""
-        )
-
-    def play(self):
-        while not self.winner:
-            self.round_count += 1
-            round = self.round_class(header=self.get_header(), players=self.players)
-            round.play()
-            base_score = round.scores[round.winner] - (self.scoring_tricks // 2)
-            if round.scores[round.loser] == 0:
-                self.score(round.winner, base_score + base_score // 2)
-            else:
-                self.score(round.winner, base_score)
-        print(f"{self.winner} wins!")
-
-    def determine_winner(self):
-        for player in self.players:
-            if self.scores[player] >= self.target_score:
-                return player
-        return None
-            
-
-class GermanWhistRound(VariableDeckGameMixin, TwoPlayerGame):
-    
-    def __init__(self, *args, **kwargs) -> None:
-        self.header = kwargs.pop("header", "")
-        return super().__init__(*args, **kwargs)
-
-    def setup(self):
-        self.scoring_tricks = self.deck_size // 4
-        self.deck = self.deck_class()
-        self.deck.shuffle()
-
-        # Choose dealer
-        self.dealer = random.choice(self.players)
-        print(f"{self.dealer.name} is selected as the dealer")
-        self.leader = self.players[0] if self.players[0] != self.dealer else self.players[1]
-        print(f"{self.players[0].name} will play first")
-
-        # Deal and sort hands
-        hand0 = []
-        hand1 = []
-        for _ in range(self.scoring_tricks):
-            hand0.append(self.deck.draw())
-            hand1.append(self.deck.draw())
-
-        self.hands = {
-            self.leader: CardList(hand0),
-            self.dealer: CardList(hand1)
-        }
-
-        for hand in self.hands.values():
-            hand.sort()
-
-        self.top_card = self.deck.flip()
-        print(f"{self.dealer.name} flips the {self.top_card}")
-        self.trump = self.top_card.suit
-        print(f"Trump is set to {self.trump}")
-
-        self.trick_count = 0
-        self.current_trick = None
-        return
-    
-    def determine_winner(self):
-        if sum(self.scores.values()) == self.scoring_tricks and self.deck.empty and all(hand.empty for hand in self.hands.values()):
-            return self.point_leader
-        return None
-
-    def print_game(self):
-        os.system("clear")
-        print(self.header)
-        print(
-            f"""
-{self.players[0].name:>20}{self.players[1].name:>20}               
-{self.scores[self.players[0]]:20}{self.scores[self.players[1]]:20}               
-
-Trump: {self.trump}
------------------------------------------------------------
-Trick {self.trick_count}
-
-Top Card: {self.top_card}
-"""
-        )
-
-    def play(self):
-        leader = self.leader
-        follower = self.dealer
-        self.print_game()
-
-        # Foreplay
-        for i in range(1, self.scoring_tricks + 1):
-            self.trick_count = i
-            trick = GermanWhistTrick(self.hands, self.trump, players=[leader, follower])
-            trick.play()
-            leader = trick.winner
-            follower = trick.loser
-            self.hands[leader].add(self.deck.draw())
-            self.hands[follower].add(self.deck.draw())
-            print(f"{trick.winner.name} wins the trick")
-            time.sleep(1)
-            self.top_card = self.deck.flip()
-            self.print_game()
-
-        for i in range(self.scoring_tricks + 1, self.scoring_tricks * 2 + 1):
-            self.trick_count = i
-            trick = GermanWhistTrick(self.hands, self.trump, players=[leader, follower])
-            trick.play()
-            leader = trick.winner
-            follower = trick.loser
-            self.score(leader)
-            print(f"{trick.winner.name} wins the trick and scores")
-            time.sleep(1)
-            self.print_game()
-        return
-
-        
-class GermanWhistTrick(TwoPlayerGame):
-
-    def __init__(self, hands, trump, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.hands = hands
-        self.trump = trump
-
-    def determine_winner(self):
-        for player in self.players:
-            if self.scores[player] == 1:
-                return player
-        return None
-
-    def play(self):
-        lead_hand = self.hands[self.players[0]]
-        follow_hand = self.hands[self.players[1]]
-
-        lead = lead_hand.pick(self.players[0].choose_play(lead_hand))
-        print(f"{self.players[0].name} plays {lead}")
-
-        legal_plays = CardList([card for card in follow_hand.cards if card.suit == lead.suit])
-        if legal_plays.empty:
-            legal_plays = follow_hand
-        follow = legal_plays.cards[self.players[1].choose_play(legal_plays)]
-        follow = follow_hand.pick(follow_hand.cards.index(follow))
-        print(f"{self.players[1].name} plays {follow}")
-
-        if lead.suit == follow.suit:
-            if lead.rank > follow.rank:
-                self.score(self.players[0])
-            else:
-                self.score(self.players[1])
-        elif follow.suit == self.trump:
-            self.score(self.players[1])
+    def follow(self, game: Game) -> Card:
+        self.leading = False
+        valid_plays = [card for card in self.hand.cards if card.suit == game.lead.suit]
+        if len(valid_plays) > 0:
+            play = valid_plays[self.heuristic.decision(game, self, valid_plays)]
+            self.hand.remove(play)
+            return play
         else:
-            self.score(self.players[0])
+            return self.hand.pick(self.heuristic.decision(game, self, self.hand.cards))
+
+
+@dataclass
+class Round(Game):
+
+    player_class = GermanWhistRoundPlayer
+
+    deck: SmallFrenchSuitedDeck = field(default_factory=SmallFrenchSuitedDeck)
+    total_tricks: int = 14
+    current_trick: int = 1
+    trump: Suit | None = None
+    prize: FrenchSuitedCard | None = None
+    lead: FrenchSuitedCard | None = None
+    played: CardList = field(default_factory=CardList)
+    leader: Player | None = None
+    follower: Player | None = None
+    
+    def setup(self):
+        self.deck.shuffle()
+        self.leader, self.follower = self.players.random_order()
+        for _ in range(self.deck.size // 4):
+            self.leader.hand.add(self.deck.draw())
+            self.follower.hand.add(self.deck.draw())
+        self.prize = self.deck.flip()
+        self.trump = self.prize.suit
+        self.display()
+
+    @property
+    def game_over(self):
+        return self.current_trick > self.total_tricks
+    
+    def turn(self):
+        if not self.deck.empty:
+            return self.foreplay_turn()
+        else:
+            return self.scoring_turn()
+        
+    def basic_turn(self, leader_wins, follower_wins):
+        self.lead = self.leader.lead(self)
+        self.display()
+        follow = self.follower.follow(self)
+
+        message(f"{self.lead} vs {follow}")
+        if self.lead.suit == follow.suit:
+            if self.lead.rank > follow.rank:
+                leader_wins()
+            else:
+                follower_wins()
+
+        elif follow.suit == self.trump:
+            follower_wins()
+
+        else:
+            leader_wins()
+
+        self.current_trick += 1
+        self.played.add(self.lead)
+        self.played.add(follow)
+        self.lead = None
+        self.prize = self.deck.flip()
+        self.display()
         return
 
-    
-class SmallDeckGermanWhist(GermanWhist):
+    def foreplay_turn(self):
 
-    deck_class = SmallFrenchSuitedDeck
+        def leader_wins():
+            self.leader.hand.add(self.deck.draw())
+            self.follower.opposing_hand.add(self.prize)
+            self.follower.hand.add(self.deck.draw())
+            message(f"{self.leader.name} wins the {self.prize}")
+            message(f"{self.follower.name} draws a card")
+
+        def follower_wins():
+            self.follower.hand.add(self.deck.draw())
+            self.leader.opposing_hand.add(self.prize)
+            self.leader.hand.add(self.deck.draw())
+            message(f"{self.follower.name} wins the {self.prize}")
+            message(f"{self.leader.name} draws a card")
+            winner = self.follower
+            self.follower = self.leader
+            self.leader = winner
+
+        return self.basic_turn(leader_wins, follower_wins)
+        
+    
+    def scoring_turn(self):
+
+        def leader_wins():
+            self.leader.score += 1
+            message(f"{self.leader.name} wins the trick")
+
+        def follower_wins():
+            self.follower.score += 1
+            message(f"{self.follower.name} wins the trick")
+            winner = self.follower
+            self.follower = self.leader
+            self.leader = winner
+
+        return self.basic_turn(leader_wins, follower_wins)
+
+    @property
+    def winner(self):
+        if self.game_over:
+            return self.leader if self.leader.score > self.follower.score else self.follower
+
+    def display(self):
+        os.system('clear')
+        print(f"""Trick {self.current_trick} of {self.total_tricks}
+{''.join([f'{player.name}: {player.score}          ' for player in self.players.all()])}
+Trump: {self.trump}
+Cards remaining: {self.deck.size}
+Prize: {self.prize or 'score'}
+{f'{self.leader.name} led {self.lead}' if self.lead else f'{self.leader.name} will lead'}
+""")
+
+
+@dataclass
+class GermanWhistGamePlayer(Player):
+
+    score: int = field(init=False, default=0)
+
+
+@dataclass
+class GermanWhist(Game):
+
+    player_class = GermanWhistGamePlayer
+
+    goal: int
+
+    @property
+    def game_over(self):
+        return self.winner is not None
+    
+    def wins(self, player: Player) -> bool:
+        return player.score >= self.goal
+
+    @property
+    def winner(self):
+        for player in self.players.all():
+            if self.wins(player):
+                return player
+
+    def turn(self):
+        r = Round()
+        r.add_players(self.players.all())
+        r.play()
+        winner = r.winner
+        round_score = r.winner.score
+        print(round_score)
+        self.score_game(self.players.get_by_uuid(winner.uuid), round_score)
+        message(''.join([f'{player.name}: {player.score}          ' for player in self.players.all()]))
+        time.sleep(3)
+
+    def score_game(self, player: Player, round_score: int) -> None:
+        if round_score == 7:
+            player.score += 6
+        else:
+            player.score += round_score - 3
 
 
 if __name__ == "__main__":
     os.system("clear")
     player_name = input("Enter your name: ")
-    print("Let's play German whist!")
-    # time.sleep(2)
+    message("Let's play German whist!")
     os.system("clear")
-    SmallDeckGermanWhist(players=[HumanPlayer(player_name), RandomPlayer("Computer")]).play()
+    game = GermanWhist(7)
+    players=[
+        Player(player_name, ShowHandUserInput()), 
+        Player("Computer", RandomDecision())
+    ]
+    game.add_players(players)
+    game.play()
+    message(f"{game.winner.name} wins!")
