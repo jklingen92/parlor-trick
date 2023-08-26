@@ -1,2 +1,4 @@
 ipython
 Pillow
+black
+mypy
